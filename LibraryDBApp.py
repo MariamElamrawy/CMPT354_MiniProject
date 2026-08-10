@@ -101,11 +101,71 @@ def volunteer_for_event(cur, member_id, event_id):
 def ask_librarian(cur):
     return;
 
+def register_member(cur, name, address, phone, email):
+    # try to create and add a tuple with reg info
+    try:
+        with conn:
+            cur.execute(
+                "INSERT INTO Member (name, address, phone, email, reg_date, status) "
+                "VALUES (?, ?, ?, ?, ?, 'active')", (name, address, phone, email, date.today().isoformat())
+            )
+        new_id = cur.lastrowid
+        print("Your ID is: ", new_id)
+        return {"member_id": new_id, "name": name}
+    except sqlite3.IntegrityError as e:
+        print("Registration failed:", e)
+        return None
+
+def login(cur, member_id):
+    #Attempt to find member for provided id
+    cur.execute(
+        "SELECT member_id, name, status FROM Member WHERE member_id = ?",
+        (member_id,)
+    )
+    row = cur.fetchone()
+
+    if row is None:
+        print("No member found with that ID.")
+        return None
+
+    member_id, name, status = row
+
+    #check status
+    if status != "active":
+        print(f"Member account is {status}, not active.")
+        return None
+
+    return {"member_id": member_id, "name": name}
+
+def  login_or_register(cur):
+    #Promt login or reg
+    while True:
+        choice = input("1) Log in  2) Register as new member: ")
+
+        if choice == "1":
+            member_id = int(input("Enter your member ID: "))
+            member = login(cur, member_id)
+            if member is not None:
+                return member
+            # repromt on failure
+
+        elif choice == "2":
+            name = input("Name: ")
+            address = input("Address: ")
+            phone = input("Phone: ")
+            email = input("Email: ")
+            member = register_member(cur, name, address, phone, email)
+            if member is not None:
+                return member
 
 def main():
     cur = conn.cursor()
+    #set member or promt login
+    current_member = login_or_register(cur)
+
     #basic input loop
     while True:
+        print(f"\nLogged in as: {current_member['name']} ID: {current_member['member_id']}")
         print("1. Find item\n2. Borrow item\n... \n0. Quit")
         choice = input("Choose: ")
         #search input
