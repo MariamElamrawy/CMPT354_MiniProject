@@ -9,8 +9,6 @@ with conn:
 
     cur = conn.cursor()
 
-    # Sanity-check query: confirm the connection works and list what tables exist.
-    # (Replace/expand this with real queries as you build out the app.)
     myQuery = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
 
     cur.execute(myQuery)
