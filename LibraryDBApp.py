@@ -10,7 +10,7 @@ LOAN_DAYS = 14
 def pause():
     input("\nPress Enter to continue...")
 
-#every attribute of an item, shared by anything that needs to show one
+#every attr
 ITEM_COLUMNS = """
         i.item_id, i.title, i.creator, i.publisher, i.year, i.subject_genre, i.language,
         pb.ISBN AS pb_isbn, pb.page_num,
@@ -31,7 +31,7 @@ ITEM_JOINS = """
 """
 
 def build_item(row):
-    #Turn a row of ITEM_COLUMNS into one dict
+    #Turn row of cols into one dict
     (item_id, title, creator, publisher, year, subject_genre, language,
      pb_isbn, page_num,
      eb_isbn, fmt,
@@ -505,6 +505,19 @@ def donate_prompt(cur, member_id):
 
     donate_item(cur, member_id, item_data)
     pause()
+
+def show_event(event, number=None):
+    label = f"{number}. " if number is not None else ""
+    print(f"{label}{event['name']} ({event['type']}) — {event['date']} {shown(event['time'])}")
+    print(f"    Room: {shown(event['room_name'])}")
+    print(f"    Audience: {shown(event['audience'])}")
+    if event['capacity'] is not None:
+        spots_left = event['capacity'] - event['registered']
+        print(f"    Spots left: {spots_left} / {event['capacity']}")
+
+def show_all_events(events):
+    for number, event in enumerate(events, start=1):
+        show_event(event, number)
 
 def find_event(cur, event_type=None):
     return;
