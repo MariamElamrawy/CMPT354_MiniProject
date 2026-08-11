@@ -487,7 +487,7 @@ def donate_prompt(cur, member_id):
 
     item_type = {"1": "Print Book", "2": "E-Book", "3": "Magazine", "4": "Journal"}[choice]
 
-    #blank is fine for anything except the title
+    
     item_data = {
         "type": item_type,
         "title": get_text("Title: ", required=True),
