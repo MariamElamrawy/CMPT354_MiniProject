@@ -505,20 +505,6 @@ def donate_prompt(cur, member_id):
         "format": get_text("Format (PDF, EPUB, ...): ") if item_type == "E-Book" else None,
     }
 
-    if item_type == "Print Book":
-        item_data['isbn'] = get_text("ISBN: ")
-        item_data['page_num'] = get_int("Pages: ")
-    elif item_type == "E-Book":
-        item_data['isbn'] = get_text("ISBN: ")
-        item_data['format'] = get_text("Format (PDF, EPUB, ...): ")
-    elif item_type == "Magazine":
-        item_data['issn'] = get_text("ISSN: ")
-        item_data['issue'] = get_text("Issue: ")
-        item_data['issue_date'] = get_date("Issue date (YYYY-MM-DD): ")
-    elif item_type == "Journal":
-        item_data['issn'] = get_text("ISSN: ")
-        item_data['issue'] = get_text("Issue: ")
-        item_data['volume'] = get_int("Volume: ")
 
     donate_item(cur, member_id, item_data)
     pause()
