@@ -125,6 +125,10 @@ def borrow_item(cur, member_id, item_id):
                 "VALUES (?, ?, NULL, ?, ?, ?)",
                 (date.today().isoformat(), due.isoformat(), item_id, copy_number, member_id)
             )
+            cur.execute(                                              
+                "DELETE FROM Hold WHERE member_id = ? AND item_id = ?",
+                (member_id, item_id)
+            )
         loan_id = cur.lastrowid
     except sqlite3.IntegrityError as e:
         print("Borrow failed:", e)
@@ -284,6 +288,14 @@ def return_item(cur, member_id, item_id, copy_number):
             "UPDATE Loan SET returned_date = ? WHERE loan_id = ?",
             (date.today().isoformat(), loan_id)
         )
+        cur.execute("""                                               
+            INSERT OR IGNORE INTO Fine (loan_id, date_issued, amount, status)
+            SELECT l.loan_id, date('now'),
+                ROUND((julianday(l.returned_date) - julianday(l.due_date)) * 0.50, 2),
+                'unpaid'
+            FROM Loan l
+            WHERE l.loan_id = ? AND l.returned_date > l.due_date
+        """, (loan_id,))
 
     print(f"Returned copy {copy_number}.")
     return {"loan_id": loan_id, "item_id": item_id, "copy_number": copy_number}
@@ -389,7 +401,12 @@ def find_existing_item(cur, item_data):
         cur.execute("SELECT item_id FROM Journal WHERE ISSN = ? AND issue IS ?",
                     (item_data['issn'], item_data['issue']))
     else:
-        return None
+        cur.execute("""
+            SELECT item_id FROM Item
+            WHERE lower(title) = lower(?)
+              AND lower(creator) = lower(?)
+              AND year IS ?
+        """, (item_data['title'], item_data['creator'], item_data['year']))
 
     row = cur.fetchone()
     return row[0] if row is not None else None
@@ -479,13 +496,13 @@ def donate_prompt(cur, member_id):
         "year": get_int("Year: ", required=True),
         "subject_genre": get_text("Subject/Genre: ", required=True),
         "language": get_text("Language: ", required=True),
-        "isbn": None,
-        "issn": None,
-        "issue": None,
-        "issue_date": None,
-        "volume": None,
-        "page_num": None,
-        "format": None,
+        "isbn": get_text("ISBN: ") if item_type in ("Print Book", "E-Book") else None,
+        "issn": get_text("ISSN: ") if item_type in ("Magazine", "Journal") else None,
+        "issue": get_text("Issue: ") if item_type in ("Magazine", "Journal") else None,
+        "issue_date": get_date("Issue date (YYYY-MM-DD): ") if item_type == "Magazine" else None,
+        "volume": get_int("Volume: ") if item_type == "Journal" else None,
+        "page_num": get_int("Pages: ") if item_type == "Print Book" else None,
+        "format": get_text("Format (PDF, EPUB, ...): ") if item_type == "E-Book" else None,
     }
 
     if item_type == "Print Book":
