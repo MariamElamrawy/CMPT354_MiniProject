@@ -706,7 +706,7 @@ def main():
     #basic input loop
     while True:
         print(f"\nLogged in as: {current_member['name']} ID: {current_member['member_id']}")
-        print("(1) Search items\n(2) Return item\n(3) Donate item\n(4) Upcoming Events\n(5) Help\n(0) Quit")
+        print("(1) Search items\n(2) Return item\n(3) Donate item\n(4) Upcoming Events\n(5) Get Help\n(0) Quit")
         choice = input("Choose: ")
         #search input
         if choice == "1":
