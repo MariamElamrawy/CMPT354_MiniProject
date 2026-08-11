@@ -519,9 +519,112 @@ def show_all_events(events):
     for number, event in enumerate(events, start=1):
         show_event(event, number)
 
-def find_event(cur, event_type=None):
-    return;
+def upcoming_events(cur, event_type=None):
+    #list al events or by tpe from today on
+    cur.execute("""
+        SELECT e.event_id, e.name, e.type, e.date, e.time, e.audience, e.capacity, r.name,
+               (SELECT COUNT(*) FROM Registers reg WHERE reg.event_id = e.event_id) AS registered
+        FROM Event e
+        LEFT JOIN Room r ON r.room_id = e.room_id
+        WHERE e.date >= :today
+          AND (:etype IS NULL OR e.type = :etype)
+        ORDER BY e.date, e.time
+    """, {"today": date.today().isoformat(), "etype": event_type})
+
+    events = []
+    for row in cur.fetchall():
+        event_id, name, etype, edate, etime, audience, capacity, room_name, registered = row
+        events.append({
+            "event_id": event_id, "name": name, "type": etype,
+            "date": edate, "time": etime, "audience": audience,
+            "capacity": capacity, "room_name": room_name, "registered": registered,
+        })
+    return events
+
+def event_action(cur, member_id, event):
+    while True:
+        choice = input("\n(1) Register  (2) Volunteer  (0) Back: ").strip()
+
+        if choice == "0":
+            return
+        if choice == "1":
+            register_for_event(cur, member_id, event['event_id'])
+            pause()
+            return
+        if choice == "2":
+            volunteer_for_event(cur, member_id, event['event_id'])
+            pause()
+            return
+
+        print("Invalid choice.")
+
+def browse_events(cur, member_id, events):
+    while True:
+        print()
+        show_all_events(events)
+        entry = input("\nSelect event number (#), or (0) to return to the menu: ").strip()
+
+        if entry == "0":
+            return
+
+        if not entry.isdigit() or not 1 <= int(entry) <= len(events):
+            print("Invalid selection.")
+            pause()
+            continue
+
+        event = events[int(entry) - 1]
+        print()
+        show_event(event)
+        event_action(cur, member_id, event)
+        return
     
+def register_for_event(cur, member_id, event_id):
+    #check alr registered and capacity
+    cur.execute("SELECT 1 FROM Registers WHERE member_id = ? AND event_id = ?", (member_id, event_id))
+    if cur.fetchone() is not None:
+        print("You're already registered for this event.")
+        return None
+
+    cur.execute("SELECT capacity FROM Event WHERE event_id = ?", (event_id,))
+    capacity = cur.fetchone()[0]
+    if capacity is not None:
+        cur.execute("SELECT COUNT(*) FROM Registers WHERE event_id = ?", (event_id,))
+        if cur.fetchone()[0] >= capacity:
+            print("Sorry, this event is full.")
+            return None
+
+    #attempt to reg
+    try:
+        with conn:
+            cur.execute(
+                "INSERT INTO Registers (member_id, event_id, reg_date) VALUES (?, ?, ?)",
+                (member_id, event_id, date.today().isoformat())
+            )
+    except sqlite3.IntegrityError as e:
+        print("Registration failed:", e)
+        return None
+
+    print("Registered!")
+    return {"member_id": member_id, "event_id": event_id}
+
+
+def volunteer_for_event(cur, member_id, event_id):
+    #check alr reg
+    cur.execute("SELECT 1 FROM Volunteers WHERE member_id = ? AND event_id = ?", (member_id, event_id))
+    if cur.fetchone() is not None:
+        print("You're already volunteering for this event.")
+        return None
+
+    #attempt reg
+    try:
+        with conn:
+            cur.execute("INSERT INTO Volunteers (member_id, event_id) VALUES (?, ?)", (member_id, event_id))
+    except sqlite3.IntegrityError as e:
+        print("Volunteer signup failed:", e)
+        return None
+
+    print("Signed up to volunteer!")
+    return {"member_id": member_id, "event_id": event_id}
 
 def ask_librarian(cur):
     return;
@@ -530,9 +633,9 @@ def register_member(cur, name, address, phone, email):
     # try to create and add a tuple with reg info
     try:
         with conn:
-            cur.execute(
-                "INSERT INTO Member (name, address, phone, email, reg_date, status) "
-                "VALUES (?, ?, ?, ?, ?, 'active')", (name, address, phone, email, date.today().isoformat())
+            cur.execute("""
+                INSERT INTO Member (name, address, phone, email, reg_date, status)
+                VALUES (?, ?, ?, ?, ?, 'active')""", (name, address, phone, email, date.today().isoformat())
             )
         new_id = cur.lastrowid
         print("Your ID is: ", new_id)
@@ -603,7 +706,7 @@ def main():
     #basic input loop
     while True:
         print(f"\nLogged in as: {current_member['name']} ID: {current_member['member_id']}")
-        print("(1) Search items\n(2) Return item\n(3) Donate item\n(4) Upcoming Events\n(5) Volunteer Oportunities\n(6) Help\n(0) Quit")
+        print("(1) Search items\n(2) Return item\n(3) Donate item\n(4) Upcoming Events\n(5) Help\n(0) Quit")
         choice = input("Choose: ")
         #search input
         if choice == "1":
@@ -631,6 +734,14 @@ def main():
             donate_prompt(cur, current_member['member_id'])
         elif choice == "0":
             break
+
+        elif choice == "4":
+            events = upcoming_events(cur)
+            if not events:
+                print("No upcoming events found.")
+                pause()
+            else:
+                browse_events(cur, current_member['member_id'], events)
         
 
     conn.close()
