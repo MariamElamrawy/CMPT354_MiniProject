@@ -10,73 +10,87 @@ LOAN_DAYS = 14
 def pause():
     input("\nPress Enter to continue...")
 
-def search_items(cur, search_term):
-    #Search by title name year or issn/isbn
-    cur.execute("""
-        SELECT i.item_id, i.title, i.creator, i.year,
-               pb.isbn AS pb_isbn, pb.page_num,
-               eb.isbn AS eb_isbn, eb.format,
-               mg.issue AS mg_issue, mg.ISSN AS mg_issn,
-               jr.issue AS jr_issue, jr.ISSN AS jr_issn,
-               rc.type AS rc_type,
-               (SELECT COUNT(*) FROM Copy c
-                 WHERE c.item_id = i.item_id AND c.status = 'available') AS available_copies
-        FROM Item i
+#every attribute of an item, shared by anything that needs to show one
+ITEM_COLUMNS = """
+        i.item_id, i.title, i.creator, i.publisher, i.year, i.subject_genre, i.language,
+        pb.ISBN AS pb_isbn, pb.page_num,
+        eb.ISBN AS eb_isbn, eb.format,
+        mg.ISSN AS mg_issn, mg.issue AS mg_issue, mg.issue_date,
+        jr.ISSN AS jr_issn, jr.issue AS jr_issue, jr.volume,
+        rc.type AS rc_type, rc.quantity,
+        (SELECT COUNT(*) FROM Copy c
+          WHERE c.item_id = i.item_id AND c.status = 'available') AS available_copies
+"""
+
+ITEM_JOINS = """
         LEFT JOIN PrintBook pb ON i.item_id = pb.item_id
         LEFT JOIN EBook     eb ON i.item_id = eb.item_id
         LEFT JOIN Magazine  mg ON i.item_id = mg.item_id
         LEFT JOIN Journal   jr ON i.item_id = jr.item_id
         LEFT JOIN Record    rc ON i.item_id = rc.item_id
+"""
+
+def build_item(row):
+    #Turn a row of ITEM_COLUMNS into one dict
+    (item_id, title, creator, publisher, year, subject_genre, language,
+     pb_isbn, page_num,
+     eb_isbn, fmt,
+     mg_issn, mg_issue, issue_date,
+     jr_issn, jr_issue, volume,
+     rc_type, quantity, available_copies) = row
+
+    # get type
+    if pb_isbn is not None:
+        item_type = "Print Book"
+    elif eb_isbn is not None:
+        item_type = "E-Book"
+    elif mg_issue is not None:
+        item_type = "Magazine"
+    elif jr_issue is not None:
+        item_type = "Journal"
+    elif rc_type is not None:
+        item_type = "Record"
+    else:
+        item_type = "Unknown"
+
+    return {
+        "item_id": item_id,
+        "title": title,
+        "creator": creator,
+        "publisher": publisher,
+        "year": year,
+        "subject_genre": subject_genre,
+        "language": language,
+        "type": item_type,
+        #set issn/isbn
+        "isbn": pb_isbn if pb_isbn is not None else eb_isbn,
+        "issn": mg_issn if mg_issn is not None else jr_issn,
+        "page_num": page_num,
+        "format": fmt,
+        "issue": mg_issue if mg_issue is not None else jr_issue,
+        "issue_date": issue_date,
+        "volume": volume,
+        "record_type": rc_type,
+        "quantity": quantity,
+        "available_copies": available_copies,
+    }
+
+def search_items(cur, search_term):
+    #Search by title name year or issn/isbn
+    cur.execute(f"""
+        SELECT {ITEM_COLUMNS}
+        FROM Item i
+        {ITEM_JOINS}
         WHERE i.title LIKE :term
            OR i.creator LIKE :term
            OR pb.isbn LIKE :term
            OR eb.isbn LIKE :term
            OR mg.ISSN LIKE :term
            OR jr.ISSN LIKE :term
-           OR CAST(i.year AS TEXT) LIKE :term 
+           OR CAST(i.year AS TEXT) LIKE :term
     """, {"term": f"%{search_term}%"})
 
-    rows = cur.fetchall()
-    results = []
-
-    for row in rows:
-        (item_id, title, creator, year,
-         pb_isbn, page_num,
-         eb_isbn, fmt,
-         mg_issue, mg_issn,
-         jr_issue, jr_issn,
-         rc_type, available_copies) = row
-
-        # get type
-        if pb_isbn is not None:
-            item_type = "Print Book"
-        elif eb_isbn is not None:
-            item_type = "E-Book"
-        elif mg_issue is not None:
-            item_type = "Magazine"
-        elif jr_issue is not None:
-            item_type = "Journal"
-        elif rc_type is not None:
-            item_type = "Record"
-        else:
-            item_type = "Unknown"
-
-        #set issn/isbn
-        isbn = pb_isbn if pb_isbn is not None else eb_isbn
-        issn = mg_issn if mg_issn is not None else jr_issn
-
-        results.append({
-            "item_id": item_id,
-            "title": title,
-            "creator": creator,
-            "year": year,
-            "type": item_type,
-            "isbn": isbn,
-            "issn": issn,
-            "available_copies": available_copies,
-        })
-
-    return results
+    return [build_item(row) for row in cur.fetchall()]
 
 def borrow_item(cur, member_id, item_id):
     #ensure one copy per member 
@@ -140,17 +154,45 @@ def place_hold(cur, member_id, item_id):
     print("Hold placed.")
     return {"member_id": member_id, "item_id": item_id}
 
+def shown(value):
+    # added to disp - for missing info
+    return value if value is not None else "-"
+
+def show_item(item, number=None):
+    #Everything about an item
+    label = f"{number}. " if number is not None else ""
+    print(f"{label}{item['title']} by {shown(item['creator'])} "
+          f"({shown(item['year'])}) — {item['type']}")
+    print(f"    Item ID: {item['item_id']}")
+    print(f"    Publisher: {shown(item['publisher'])}")
+    print(f"    Subject/Genre: {shown(item['subject_genre'])}")
+    print(f"    Language: {shown(item['language'])}")
+
+    #dependant info
+    if item['type'] == "Print Book":
+        print(f"    ISBN: {shown(item['isbn'])}")
+        print(f"    Pages: {shown(item['page_num'])}")
+    elif item['type'] == "E-Book":
+        print(f"    ISBN: {shown(item['isbn'])}")
+        print(f"    Format: {shown(item['format'])}")
+    elif item['type'] == "Magazine":
+        print(f"    ISSN: {shown(item['issn'])}")
+        print(f"    Issue: {shown(item['issue'])}")
+        print(f"    Issue date: {shown(item['issue_date'])}")
+    elif item['type'] == "Journal":
+        print(f"    ISSN: {shown(item['issn'])}")
+        print(f"    Issue: {shown(item['issue'])}")
+        print(f"    Volume: {shown(item['volume'])}")
+    elif item['type'] == "Record":
+        print(f"    Type: {shown(item['record_type'])}")
+        print(f"    Quantity: {shown(item['quantity'])}")
+
+    print(f"    Available copies: {item['available_copies']}")
+
 def show_results(matches):
     #List matches with selection number
     for number, item in enumerate(matches, start=1):
-        print(f"{number}. {item['title']} by {item['creator']} ({item['year']}) — {item['type']}")
-
-        if item['isbn'] is not None:
-            print(f"    ISBN: {item['isbn']}")
-        elif item['issn'] is not None:
-            print(f"    ISSN: {item['issn']}")
-
-        print(f"    Available copies: {item['available_copies']}")
+        show_item(item, number)
 
 def item_action(cur, member_id, item):
     #Borrow if a copy is free or promt hold
@@ -189,36 +231,35 @@ def browse_results(cur, member_id, matches):
             continue
 
         item = matches[int(entry) - 1]
-        print(f"\n{item['title']} by {item['creator']} ({item['year']}) — {item['type']}")
+        print()
+        show_item(item)
         item_action(cur, member_id, item)
         return
 
 
 def member_loans(cur, member_id):
     #get everything the member currently has out
-    cur.execute("""
-        SELECT l.loan_id, l.item_id, l.copy_number, l.checkout_date, l.due_date,
-               i.title, i.creator, i.year
+    cur.execute(f"""
+        SELECT l.loan_id, l.copy_number, l.checkout_date, l.due_date,
+               {ITEM_COLUMNS}
         FROM Loan l
         JOIN Item i ON i.item_id = l.item_id
+        {ITEM_JOINS}
         WHERE l.member_id = ? AND l.returned_date IS NULL
         ORDER BY l.due_date
     """, (member_id,))
 
     loans = []
 
-    for (loan_id, item_id, copy_number, checkout_date, due_date,
-         title, creator, year) in cur.fetchall():
+    for row in cur.fetchall():
+        loan_id, copy_number, checkout_date, due_date = row[:4]
         loans.append({
             "loan_id": loan_id,
-            "item_id": item_id,
             "copy_number": copy_number,
             "checkout_date": checkout_date,
             "due_date": due_date,
-            "title": title,
-            "creator": creator,
-            "year": year,
             "overdue": due_date < date.today().isoformat(),
+            "item": build_item(row[4:]),
         })
 
     return loans
@@ -251,7 +292,7 @@ def return_item(cur, member_id, item_id, copy_number):
 def show_loans(loans):
     #disp selection list
     for number, loan in enumerate(loans, start=1):
-        print(f"{number}. {loan['title']} by {loan['creator']} ({loan['year']})")
+        show_item(loan['item'], number)
         print(f"    Copy {loan['copy_number']}, borrowed {loan['checkout_date']}")
 
         if loan['overdue']:
@@ -268,7 +309,7 @@ def loan_action(cur, member_id, loan):
             return
 
         if choice == "1":
-            return_item(cur, member_id, loan['item_id'], loan['copy_number'])
+            return_item(cur, member_id, loan['item']['item_id'], loan['copy_number'])
             pause()
             return
 
@@ -290,21 +331,185 @@ def browse_loans(cur, member_id, loans):
             continue
 
         loan = loans[int(entry) - 1]
-        print(f"\n{loan['title']} by {loan['creator']} ({loan['year']}) — copy {loan['copy_number']}")
+        print()
+        show_item(loan['item'])
+        print(f"    Copy {loan['copy_number']}, due {loan['due_date']}")
         loan_action(cur, member_id, loan)
         return
 
-def donate_item(cur, item_data):
-    return;
+def get_text(prompt, required=False):
+    while True:
+        entry = input(prompt).strip()
+
+        if entry:
+            return entry
+        if not required:
+            return None
+
+        print("This one is required.")
+
+def get_int(prompt, required=False):
+    while True:
+        entry = input(prompt).strip()
+
+        if not entry:
+            if not required:
+                return None
+            print("This one is required.")
+            continue
+
+        if entry.isdigit():
+            return int(entry)
+
+        print("Enter a number.")
+
+def get_date(prompt):
+    while True:
+        entry = input(prompt).strip()
+
+        if not entry:
+            return None
+
+        try:
+            return date.fromisoformat(entry).isoformat()
+        except ValueError:
+            print("Enter a date as YYYY-MM-DD.")
+
+def find_existing_item(cur, item_data):
+    #find by isbn or issn and issue
+    item_type = item_data['type']
+
+    if item_type == "Print Book" and item_data['isbn']:
+        cur.execute("SELECT item_id FROM PrintBook WHERE ISBN = ?", (item_data['isbn'],))
+    elif item_type == "E-Book" and item_data['isbn']:
+        cur.execute("SELECT item_id FROM EBook WHERE ISBN = ?", (item_data['isbn'],))
+    elif item_type == "Magazine" and item_data['issn']:
+        cur.execute("SELECT item_id FROM Magazine WHERE ISSN = ? AND issue IS ?",
+                    (item_data['issn'], item_data['issue']))
+    elif item_type == "Journal" and item_data['issn']:
+        cur.execute("SELECT item_id FROM Journal WHERE ISSN = ? AND issue IS ?",
+                    (item_data['issn'], item_data['issue']))
+    else:
+        return None
+
+    row = cur.fetchone()
+    return row[0] if row is not None else None
+
+def add_copy(cur, item_id, member_id):
+    #next free copy number for an item we already had
+    cur.execute("SELECT COALESCE(MAX(copy_number), 0) + 1 FROM Copy WHERE item_id = ?", (item_id,))
+    copy_number = cur.fetchone()[0]
+
+    with conn:
+        cur.execute("INSERT INTO Copy (item_id, copy_number, status) VALUES (?, ?, 'available')",
+                    (item_id, copy_number))
+        cur.execute("INSERT INTO Donates (item_id, copy_number, member_id, date_donated) "
+                    "VALUES (?, ?, ?, ?)",
+                    (item_id, copy_number, member_id, date.today().isoformat()))
+
+    return copy_number
+
+def donate_item(cur, member_id, item_data):
+    #donating something already had adds a copy
+    existing_id = find_existing_item(cur, item_data)
+
+    if existing_id is not None:
+        copy_number = add_copy(cur, existing_id, member_id)
+        print(f"Already in the catalogue, added as copy {copy_number}.")
+        return {"item_id": existing_id, "copy_number": copy_number, "new_item": False}
+
+    item_type = item_data['type']
+
+    #attmpt insertion
+    try:
+        with conn:
+            cur.execute(
+                "INSERT INTO Item (title, creator, publisher, year, subject_genre, language) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (item_data['title'], item_data['creator'], item_data['publisher'],
+                 item_data['year'], item_data['subject_genre'], item_data['language'])
+            )
+            item_id = cur.lastrowid
+
+            if item_type == "Print Book":
+                cur.execute("INSERT INTO PrintBook (item_id, ISBN, page_num) VALUES (?, ?, ?)",
+                            (item_id, item_data['isbn'], item_data['page_num']))
+            elif item_type == "E-Book":
+                cur.execute("INSERT INTO EBook (item_id, ISBN, format) VALUES (?, ?, ?)",
+                            (item_id, item_data['isbn'], item_data['format']))
+            elif item_type == "Magazine":
+                cur.execute("INSERT INTO Magazine (item_id, ISSN, issue, issue_date) VALUES (?, ?, ?, ?)",
+                            (item_id, item_data['issn'], item_data['issue'], item_data['issue_date']))
+            elif item_type == "Journal":
+                cur.execute("INSERT INTO Journal (item_id, ISSN, issue, volume) VALUES (?, ?, ?, ?)",
+                            (item_id, item_data['issn'], item_data['issue'], item_data['volume']))
+
+            cur.execute("INSERT INTO Copy (item_id, copy_number, status) VALUES (?, 1, 'available')",
+                        (item_id,))
+            cur.execute("INSERT INTO Donates (item_id, copy_number, member_id, date_donated) "
+                        "VALUES (?, 1, ?, ?)",
+                        (item_id, member_id, date.today().isoformat()))
+    except sqlite3.IntegrityError as e:
+        print("Donation failed:", e)
+        return None
+
+    print(f"Thanks, added as item {item_id}, copy 1.")
+    return {"item_id": item_id, "copy_number": 1, "new_item": True}
+
+def donate_prompt(cur, member_id):
+    while True:
+        print("\nWhat would you like to donate?")
+        print("(1) Print Book\n(2) E-Book\n(3) Magazine\n(4) Journal\n(0) Back")
+        choice = input("Choose: ").strip()
+
+        if choice == "0":
+            return
+        if choice in ("1", "2", "3", "4"):
+            break
+
+        print("Invalid choice.")
+
+    item_type = {"1": "Print Book", "2": "E-Book", "3": "Magazine", "4": "Journal"}[choice]
+
+    #blank is fine for anything except the title
+    item_data = {
+        "type": item_type,
+        "title": get_text("Title: ", required=True),
+        "creator": get_text("Author/Creator: ", required=True),
+        "publisher": get_text("Publisher: ", required=True),
+        "year": get_int("Year: ", required=True),
+        "subject_genre": get_text("Subject/Genre: ", required=True),
+        "language": get_text("Language: ", required=True),
+        "isbn": None,
+        "issn": None,
+        "issue": None,
+        "issue_date": None,
+        "volume": None,
+        "page_num": None,
+        "format": None,
+    }
+
+    if item_type == "Print Book":
+        item_data['isbn'] = get_text("ISBN: ")
+        item_data['page_num'] = get_int("Pages: ")
+    elif item_type == "E-Book":
+        item_data['isbn'] = get_text("ISBN: ")
+        item_data['format'] = get_text("Format (PDF, EPUB, ...): ")
+    elif item_type == "Magazine":
+        item_data['issn'] = get_text("ISSN: ")
+        item_data['issue'] = get_text("Issue: ")
+        item_data['issue_date'] = get_date("Issue date (YYYY-MM-DD): ")
+    elif item_type == "Journal":
+        item_data['issn'] = get_text("ISSN: ")
+        item_data['issue'] = get_text("Issue: ")
+        item_data['volume'] = get_int("Volume: ")
+
+    donate_item(cur, member_id, item_data)
+    pause()
 
 def find_event(cur, event_type=None):
     return;
     
-def register_for_event(cur, member_id, event_id):
-    return;
-
-def volunteer_for_event(cur, member_id, event_id):
-    return;
 
 def ask_librarian(cur):
     return;
@@ -392,8 +597,9 @@ def main():
         if choice == "1":
             term = input("Search for: ")
             matches = search_items(cur, term)
+            #recrds of items to be added dont need to be seen by users
+            matches = [item for item in matches if item['type'] != "Record"]
 
-            #borrow and hold are reached by picking a result
             if not matches:
                 print("No items found.")
                 pause()
@@ -408,6 +614,9 @@ def main():
                 pause()
             else:
                 browse_loans(cur, current_member['member_id'], loans)
+        #donations
+        elif choice == "3":
+            donate_prompt(cur, current_member['member_id'])
         elif choice == "0":
             break
         
