@@ -644,6 +644,10 @@ def volunteer_for_event(cur, member_id, event_id):
     return {"member_id": member_id, "event_id": event_id}
 
 def ask_librarian(cur):
+    print("\nWhat would you like to ask?")
+    question = get_text("Question: ", required=True )
+    print("\nThanks! Your question has been noted, A librarian will get back to you soon.")
+    pause()
     return;
 
 def register_member(cur, name, address, phone, email):
@@ -749,7 +753,7 @@ def main():
     #basic input loop
     while True:
         print(f"\nLogged in as: {current_member['name']} ID: {current_member['member_id']}")
-        print("(1) Search items\n(2) Return item\n(3) Donate item\n(4) Upcoming Events\n(5) Get Help\n(0) Quit")
+        print("(1) Search items\n(2) Return item\n(3) Donate item\n(4) Upcoming Events - attend or volunteer here \n(5) Get Help\n(0) Quit")
         choice = input("Choose: ")
         #search input
         if choice == "1":
@@ -785,7 +789,9 @@ def main():
                 pause()
             else:
                 browse_events(cur, current_member['member_id'], events)
-        
+
+        elif choice == "5":
+                    ask_librarian(cur)
 
     conn.close()
 
