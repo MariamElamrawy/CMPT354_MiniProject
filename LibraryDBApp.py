@@ -630,15 +630,37 @@ def volunteer_for_event(cur, member_id, event_id):
     return {"member_id": member_id, "event_id": event_id}
 
 def ask_librarian(cur):
-    print("\nWho would you like to contact?")
-    cur.execute("SELECT first_name, last_name, role, email, phone FROM Personnel")
-    for fname, lname, role, email, phone in cur.fetchall():
-        print(f"{fname} {lname} — {role}")
-        print(f"   {email}, {phone}")
-    question = get_text("Question: ", required=True )
-    print(f"\nThanks! Your question has been noted, we will get back to you soon.")
-    pause()
-    return;
+    #list staff, have user pick one to question
+    cur.execute("SELECT first_name, last_name, role, email, phone FROM Personnel ORDER BY employee_id")
+    staff = cur.fetchall()
+
+    if not staff:
+        print("No staff found.")
+        pause()
+        return
+
+    while True:
+        print("\nWho would you like to contact?")
+        for number, (fname, lname, role, email, phone) in enumerate(staff, start=1):
+            print(f"{number}. {fname} {lname} — {role}")
+            print(f"    {shown(email)}, {shown(phone)}")
+
+        entry = input("\nSelect a staff member (#), or (0) to return to the menu: ").strip()
+
+        if entry == "0":
+            return
+
+        if not entry.isdigit() or not 1 <= int(entry) <= len(staff):
+            print("Invalid selection.")
+            pause()
+            continue
+
+        fname, lname, role, email, phone = staff[int(entry) - 1]
+        print(f"\nAsking {fname} {lname} ({role}):")
+        get_text("Question: ", required=True)
+        print(f"\nThanks! Your question has been sent to {fname} {lname}, they will get back to you soon.")
+        pause()
+        return
 
 def register_member(cur, name, address, phone, email):
     # try to create and add a tuple with reg info
