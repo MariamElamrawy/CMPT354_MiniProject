@@ -163,7 +163,6 @@ def show_item(item, number=None):
     label = f"{number}. " if number is not None else ""
     print(f"{label}{item['title']} by {shown(item['creator'])} "
           f"({shown(item['year'])}) — {item['type']}")
-    print(f"    Item ID: {item['item_id']}")
     print(f"    Publisher: {shown(item['publisher'])}")
     print(f"    Subject/Genre: {shown(item['subject_genre'])}")
     print(f"    Language: {shown(item['language'])}")
