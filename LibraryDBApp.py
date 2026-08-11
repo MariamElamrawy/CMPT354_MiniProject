@@ -644,9 +644,13 @@ def volunteer_for_event(cur, member_id, event_id):
     return {"member_id": member_id, "event_id": event_id}
 
 def ask_librarian(cur):
-    print("\nWhat would you like to ask?")
+    print("\nWho would you like to contact?")
+    cur.execute("SELECT first_name, last_name, role, email, phone FROM Personnel")
+    for fname, lname, role, email, phone in cur.fetchall():
+        print(f"{fname} {lname} — {role}")
+        print(f"   {email}, {phone}")
     question = get_text("Question: ", required=True )
-    print("\nThanks! Your question has been noted, A librarian will get back to you soon.")
+    print(f"\nThanks! Your question has been noted, we will get back to you soon.")
     pause()
     return;
 
