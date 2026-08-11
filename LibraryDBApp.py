@@ -696,12 +696,38 @@ def  login_or_register(cur):
             member = register_member(cur, name, address, phone, email)
             if member is not None:
                 return member
+    
+def check_overdue_fines(cur):
+    #issue fines to any overdue without them, incr fines overitme
+    with conn:
+        cur.execute("""
+            INSERT OR IGNORE INTO Fine (loan_id, date_issued, amount, status)
+            SELECT l.loan_id,
+                   date('now'),
+                   ROUND((julianday('now') - julianday(l.due_date)) * 0.50, 2),
+                   'unpaid'
+            FROM Loan l
+            WHERE l.returned_date IS NULL
+              AND l.due_date < date('now')
+        """)
+        cur.execute("""
+            UPDATE Fine
+            SET amount = ROUND((julianday('now') - julianday(
+                    (SELECT due_date FROM Loan WHERE Loan.loan_id = Fine.loan_id)
+                )) * 0.50, 2)
+            WHERE status = 'unpaid'
+            AND loan_id IN (
+                SELECT loan_id FROM Loan
+                WHERE returned_date IS NULL AND due_date < date('now')
+            )
+        """)
 
 
 def main():
     cur = conn.cursor()
     #set member or promt login
     current_member = login_or_register(cur)
+    check_overdue_fines(cur)
 
     #basic input loop
     while True:
