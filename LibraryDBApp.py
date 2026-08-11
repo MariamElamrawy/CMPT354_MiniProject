@@ -642,7 +642,7 @@ def ask_librarian(cur):
     while True:
         print("\nWho would you like to contact?")
         for number, (fname, lname, role, email, phone) in enumerate(staff, start=1):
-            print(f"{number}. {fname} {lname} — {role}")
+            print(f"({number}) {fname} {lname} — {role}")
             print(f"    {shown(email)}, {shown(phone)}")
 
         entry = input("\nSelect a staff member (#), or (0) to return to the menu: ").strip()
